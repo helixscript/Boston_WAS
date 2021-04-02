@@ -85,7 +85,6 @@ cellTypeShannonPlot <-
     facet_grid(patient~.) +
     theme(axis.text = element_text(size = 14),
           axis.title = element_text(size = 16),
-          strip.background =element_rect(fill="white"),
           panel.grid.major = element_blank(), panel.grid.minor = element_blank(),
           panel.background = element_blank(), axis.line = element_line(colour = "black"))
 
@@ -180,7 +179,7 @@ p <- ggplot(x) +
     guides(fill=guide_legend(ncol=2)) +
     facet_grid(patient~.) 
 
-ggsave(p, file = 'patientRelAbund.pdf', height = 10, width = 15, units = 'in')
+ggsave(p, file = 'patientRelAbund.pdf', height = 10, width = 15, units = 'in', useDingbats = FALSE)
 
 
 
