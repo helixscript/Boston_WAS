@@ -4,6 +4,7 @@ library(RMySQL)
 library(gt23)
 library(GenomicRanges)
 library(vegan)
+library(untb)
 
 invisible(sapply(dbListConnections(MySQL()), dbDisconnect))
 dbConn  <- dbConnect(MySQL(), group='specimen_management')
@@ -40,6 +41,9 @@ d <- group_by(data.frame(intSites), patient, cellType) %>%
 d <- group_by(data.frame(intSites), patient, cellType, timePoint) %>%
        summarise(Chao1   = round(estimateR(estAbund, index='chao')[2], 0),
                  Shannon = diversity(estAbund),
+                 Simpson = 1-diversity(estAbund, index = "simpson"),
+                 Simpson_nr = simpson(estAbund, with.replacement=FALSE),
+                 Simpson_inv = diversity(estAbund, index = "invsimpson"),
                  nSites  = n_distinct(posid)) %>%
      ungroup() %>%
      filter(cellType %in% c("Whole blood", "T cells", "Neutrophils", "NK cells", "PBMC", "B cells"))
@@ -89,6 +93,48 @@ cellTypeShannonPlot <-
           panel.background = element_blank(), axis.line = element_line(colour = "black"))
 
 ggsave(cellTypeShannonPlot, file = 'cellTypeShannonPlot.pdf', width = 10, height = 7, units = 'in', useDingbats = FALSE)
+
+
+# aqui empiezan los plots de simson index por patient---------------
+SimpsonPatientPlot <- function(x){ 
+  ggplot(x, aes(timePoint, Simpson_nr, color = patient, group = patient)) +
+    theme_bw()+
+    scale_color_manual(name = 'Patient', values = colors) +
+    geom_point(size = 3) +
+    geom_line() +
+    scale_y_continuous(breaks=seq(0, 0.8, by = 0.1), limits=c(0,0.8))+
+     labs(x = 'Time point', y = 'Simpson index') +
+     theme(axis.text = element_text(size = 14),
+           axis.title = element_text(size = 16),
+           panel.grid.major = element_blank(), panel.grid.minor = element_blank(),
+           panel.background = element_blank(), axis.line = element_line(colour = "black"))
+}
+
+SimpsonPatientPlotWholeBlood <- SimpsonPatientPlot(filter(d, cellType == 'Whole blood', nSites >= 100))
+SimpsonPatientPlotPBMC <- SimpsonPatientPlot(filter(d, cellType == 'PBMC', nSites >= 100))
+
+ggsave(SimpsonPatientPlotWholeBlood, file = 'SimpsonPatientPlotWholeBlood.png', width = 10, units = 'in')
+ggsave(SimpsonPatientPlotPBMC,       file = 'SimpsonPatientPlotPBMC.png', width = 10, units = 'in')
+
+# aqui es por typo de celula -----------------
+cellTypeSimpsonPlot <-
+  ggplot(filter(d, nSites >= 100, cellType != 'Whole blood'), aes(timePoint, Simpson_nr, color = cellType, group = cellType)) +
+  theme_bw()+
+  scale_color_manual(name = 'Cell type', values = colors) +
+  geom_point(size = 3) +
+  geom_line() +
+  scale_y_continuous(breaks=seq(0, 0.8, by = 0.2), limits = c(0,0.8))+
+#  ylim(c(3,10)) +
+  labs(x = 'Time point', y = 'Simpson index') +
+  facet_grid(patient~.) +
+  theme(axis.text = element_text(size = 14),
+        axis.title = element_text(size = 16),
+        panel.grid.major.x = element_blank(), panel.grid.minor = element_blank(),
+        panel.background = element_blank(), axis.line = element_line(colour = "black"))
+
+ggsave(cellTypeSimpsonPlot, file = 'cellTypeSimpsonPlot.png', width = 10, height = 7, units = 'in')
+
+# aqui acaban los plots ------------
 
 
 # Add nearest feature flags.

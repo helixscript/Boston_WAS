@@ -1,12 +1,26 @@
 ---
-title: "Untitled"
+title: "WAS report 1"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
 output: pdf_document
+name: "Adrian Cantu"
+header-includes:
+    - \usepackage{float}
 ---
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(fig.pos = 'H')
 suppressMessages(library("tidyverse"))
+#library(tidyverse)
+library(kableExtra)
+```
 
+## Samples
+
+Samples of different blood cells from patients with Wiskott-Aldrich syndrome where essayed for insertion site at different time point after gene therapy treatment.
+
+
+```{r sample_table_t0, echo=FALSE, results='asis'}
 pWAS.list <- readRDS('pWAS.list.rds')
 
 pwas.time <- function(x){
@@ -44,62 +58,44 @@ tabs <-
            return(output_list)
          })
 
-long_tables <- imap(tabs,function(tab,name){
-  #browser()
-  factor_order <- c("0 DAYS","1 MONTHS","1.5 MONTHS","3 MONTHS","6 MONTHS","9 MONTHS",
-                    "1 YEARS","1.5 YEARS","2 YEARS","2.5 YEARS","3 YEARS",
-                    "3.5 YEARS","4 YEARS","4.5 YEARS","5 YEARS","6 YEARS")
-  as.data.frame(tab$table) %>%
-    rownames_to_column(var = "y") %>% 
-    #  mutate(across(where(is.numeric),~./max(.))) %>%
-    pivot_longer(!y,values_to='val', names_to='x') %>%
-    mutate(x=fct_relevel(x,factor_order[factor_order %in% x])) %>%
-    mutate(y=fct_relevel(as.factor(y),factor_order[factor_order %in% y])) %>%
-    mutate(y_count=tab$counts[as.character(y)],x_count=tab$counts[as.character(x)]) %>%
-    mutate(jaccard=(val/(x_count+y_count-val))) %>%
-    mutate(sample_name=name) %>%
-    mutate(x_s=paste(x,sample_name),y_s=paste(y,sample_name))
-})
-
-factor_order <- c("0 DAYS","1 MONTHS","1.5 MONTHS","3 MONTHS","6 MONTHS","9 MONTHS",
+           factor_order <- c("0 DAYS","1 MONTHS","1.5 MONTHS","3 MONTHS","6 MONTHS","9 MONTHS",
                   "1 YEARS","1.5 YEARS","2 YEARS","2.5 YEARS","3 YEARS",
-                  "3.5 YEARS","4 YEARS","4.5 YEARS","5 YEARS","6 YEARS")
-long_names <- names(long_tables)
-factor_order_plus <- as.vector(outer(factor_order, long_names, FUN = "paste"))
+                  "3.5 YEARS","4 YEARS","4.5 YEARS","5 YEARS")
+data_samples <-imap(tabs,function(pt,x){
+           kk <- factor_order %in% names(pt$counts)
+           as.data.frame(t(c(x,kk)))})
 
-inv_paste <- function(x,y) paste(y,x)
-inv_get_date <- function(x,y) return(y)
-factor_order_per_date <- as.vector(outer(long_names,factor_order, FUN = inv_paste))
+all_data_samples<-reduce(data_samples,rbind)
+colnames(all_data_samples) <- c("Subject",factor_order)
 
-
+all_data_samples %>% 
+  mutate(across('0 DAYS':'5 YEARS',~ifelse(.x==TRUE,'X',.x))) %>%
+  mutate(across('0 DAYS':'5 YEARS',~ifelse(.x==FALSE,'',.x))) %>%
+  kable( "latex", booktabs = TRUE, caption = "Subject/Time samples",align = "c") %>%
+  kable_styling(latex_options = c("hold_position","scale_down"))
 ```
 
+## Shared insertion sites and Jaccard distance
 
-## Including Plots
-
-You can also embed plots, for example: 
+Samples from the same subject at different time points can share a subset of insertions sites. The Jaccard distance can be used to quantify this  
 $$
-E = mc^2
+jaccard(A,B)=\frac{\left | A\bigcap B \right |}{\left | A \bigcup B \right |}
 $$
 
-```{r pressure, echo=FALSE}
-reduce(long_tables,rbind) %>% 
-  mutate(x_s=fct_relevel(x_s,factor_order_per_date[factor_order_per_date %in% x_s])) %>%
-  mutate(y_s=fct_relevel(y_s,factor_order_per_date[factor_order_per_date %in% y_s])) %>%
-ggplot( aes(x_s,y_s, fill= jaccard)) + 
-  geom_tile() +
-  scale_fill_binned(breaks = c(0.001, 0.2, 0.4,0.6),low="white", high="blue",show.limits = TRUE) +
-  theme_classic() +
-  theme(axis.text.x = element_text(angle = 90,size=4),
-        axis.title.x=element_blank(),
-        axis.title.y=element_blank()) +
-  scale_x_discrete()
-  #  xlab("Sample") +
-  #  labs(fill='Dilution \nat threshold',
-  #       title = "Quiescent") +
-  #  My_Theme +
-  coord_equal() 
 
+
+```{r, echo=FALSE, out.width="100%",fig.align="center" ,fig.cap="Samples arranged per date"}
+knitr::include_graphics("test2.png")
 ```
 
-Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
+```{r, echo=FALSE, out.width="100%",fig.align="center" ,fig.cap="Samples arranged per Subject"}
+knitr::include_graphics("test3.png")
+```
+
+## Loss of diversity
+
+As time passes, you would expect to lose some insertion site diversity as those clones fail to grow. A rapid loss of diversity however, might indicate a clone is expanding and some increased risk of cancer exists. The Simpson index ($D$) measures the probability that two randomly selected individual in a population (cell with insertion sites in this case) are of the same species (having the same insertion site). A Sample with high Simpson index is thus, less diverse. It is important to mention that we are using the original formulation, where the observation are taken without replacement. this formulation differs significantly from the more widely used "with replacement" specially in situation where you expect a large number of rare species (as is the case here). 
+
+```{r, echo=FALSE, out.width="100%",fig.align="center" ,fig.cap="Simpson per Cell Type and Subject"}
+knitr::include_graphics("cellTypeSimpsonPlot.png")
+```

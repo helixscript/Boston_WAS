@@ -111,26 +111,40 @@ SS <- levels(as.factor(reduce(long_tables,rbind)$x_s))
 is_valid <- function(x,y,ss) paste(x,y) %in% ss
 valid_paste <- function(x,y,ss) ifelse(is_valid(x,y,ss),paste(x,y),'Na')
 
-factor_order_plus <- as.vector(outer(factor_order, long_names, FUN = "paste"))
-factor_order_plus_bis <- as.vector(outer(factor_order, long_names, FUN =valid_paste,ss=SS))
+#factor_order_plus <- as.vector(outer(factor_order, long_names, FUN = "paste"))
+factor_order_plus_tmp <- as.vector(outer(factor_order, long_names, FUN =valid_paste,ss=SS))
+factor_order_plus <- factor_order_plus_tmp[factor_order_plus_tmp != 'Na']
 
-inv_paste <- function(x,y) paste(y,x)
-factor_order_per_date <- as.vector(outer(long_names,factor_order, FUN = inv_paste))
+inv_valid_paste <- function(x,y,ss) ifelse(is_valid(y,x,ss),paste(y,x),'Na')
+factor_order_per_date_tmp <- as.vector(outer(long_names,factor_order, FUN = inv_valid_paste, ss=SS))
+factor_order_per_date <- factor_order_per_date_tmp[factor_order_per_date_tmp != 'Na']
 
-get_first <- function(x,y) return(x)
-get_second <- function(x,y) return(y)
-date_order_per_date <- as.vector(outer(long_names,factor_order, FUN = get_second))
-names_order_per_date <- as.vector(outer(long_names,factor_order, FUN = get_first))
+get_first_valid <- function(x,y,ss) ifelse(is_valid(y,x,ss),x,'Na')
+get_second_valid <- function(x,y,ss) ifelse(is_valid(y,x,ss),y,'Na')
+
+date_order_per_date_tmp <- as.vector(outer(long_names,factor_order, FUN = get_second_valid,ss=SS))
+date_order_per_date <- date_order_per_date_tmp[date_order_per_date_tmp != 'Na']
+
+
+names_order_per_date_tmp <- as.vector(outer(long_names,factor_order, FUN = get_first_valid,ss=SS))
+names_order_per_date <- names_order_per_date_tmp[names_order_per_date_tmp != 'Na']
 per_date_sample_color <- sapply(as.integer(as.factor(names_order_per_date)),function(x) {return(hcl.colors(5, "viridis")[x])} )
-sample_to_color_df <- data.frame(sample=names(long_tables),color=hcl.colors(5, "viridis"))
 
-names_order_per_sample <- as.vector(outer(factor_order, long_names, FUN = get_second))
-date_order_per_sample <- as.vector(outer(factor_order, long_names, FUN = get_first))
+sample_to_color_df <- data.frame(sample=names(long_tables),color=hcl.colors(5, "viridis"))
+#========
+
+get_first_valid_inv <- function(x,y,ss) ifelse(is_valid(x,y,ss),x,'Na')
+get_second_valid_inv <- function(x,y,ss) ifelse(is_valid(x,y,ss),y,'Na')
+names_order_per_sample_tmp <- as.vector(outer(factor_order, long_names, FUN = get_second_valid_inv,ss=SS))
+names_order_per_sample <- names_order_per_sample_tmp[names_order_per_sample_tmp!= 'Na']
+
+date_order_per_sample_tmp <- as.vector(outer(factor_order, long_names, FUN = get_first_valid_inv,ss=SS))
+date_order_per_sample <- date_order_per_sample_tmp[date_order_per_sample_tmp!= 'Na']
 per_sample_sample_color <-sapply(as.integer(as.factor(names_order_per_sample)),function(x) {return(hcl.colors(5, "viridis")[x])} )
 
 pp <- reduce(long_tables,rbind) %>% 
-  mutate(x_s=fct_relevel(x_s,factor_order_per_date[factor_order_per_date %in% x_s])) %>%
-  mutate(y_s=fct_relevel(y_s,factor_order_per_date[factor_order_per_date %in% y_s])) %>%
+  mutate(x_s=fct_relevel(x_s,factor_order_per_date)) %>%
+  mutate(y_s=fct_relevel(y_s,factor_order_per_date)) %>%
   ggplot( aes(x_s,y_s, fill= jaccard,color=sample_name)) + 
   geom_tile(size=0) +
   scale_fill_binned(breaks = c(0.001, 0.2, 0.4,0.6),low="white", high="blue",show.limits = TRUE) +
@@ -159,8 +173,8 @@ pp + scale_colour_manual(name = 'the colour', values =c('pWAS02'='black','pWAS03
 dev.off()
 
 pp2 <- reduce(long_tables,rbind) %>% 
-  mutate(x_s=fct_relevel(x_s,factor_order_plus[factor_order_plus %in% x_s])) %>%
-  mutate(y_s=fct_relevel(y_s,factor_order_plus[factor_order_plus %in% y_s])) %>%
+  mutate(x_s=fct_relevel(x_s,factor_order_plus)) %>%
+  mutate(y_s=fct_relevel(y_s,factor_order_plus)) %>%
   ggplot( aes(x_s,y_s, fill= jaccard,color=sample_name)) + 
   geom_tile(size=0) +
   scale_fill_binned(breaks = c(0.001, 0.2, 0.4,0.6),low="white", high="blue",show.limits = TRUE) +
