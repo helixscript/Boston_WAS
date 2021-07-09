@@ -72,7 +72,7 @@ all_data_samples %>%
   mutate(across('0 DAYS':'5 YEARS',~ifelse(.x==TRUE,'X',.x))) %>%
   mutate(across('0 DAYS':'5 YEARS',~ifelse(.x==FALSE,'',.x))) %>%
   kable( "latex", booktabs = TRUE, caption = "Subject/Time samples",align = "c") %>%
-  kable_styling(latex_options = c("hold_position","scale_down"))
+  kable_styling(latex_options = c("hold_position","scale_down","striped"))
 ```
 
 ## Shared insertion sites and Jaccard distance
@@ -85,11 +85,11 @@ $$
 
 
 ```{r, echo=FALSE, out.width="100%",fig.align="center" ,fig.cap="Samples arranged per date"}
-knitr::include_graphics("test2.png")
+knitr::include_graphics("per_date_jaccard.png")
 ```
 
 ```{r, echo=FALSE, out.width="100%",fig.align="center" ,fig.cap="Samples arranged per Subject"}
-knitr::include_graphics("test3.png")
+knitr::include_graphics("per_subject_jaccard.png")
 ```
 
 ## Loss of diversity
