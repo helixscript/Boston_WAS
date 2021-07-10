@@ -168,57 +168,82 @@ pp2 + scale_colour_manual(name = 'the colour', values =c('pWAS02'='black','pWAS0
   guides(colour=guide_legend("Subject", override.aes=list(shape=22,size=0, fill=sample_to_color_df$color)))
 dev.off()
 
-# charles figures 
+# charles figures ----------------- 
 
 ch.final.table <- readRDS('charles_table.rds')
 
+# per sample charles -------------------------
 
 factor_order_ch_tmp <- as.vector(outer(factor_order, long_names, FUN =valid_paste,ss=ch.final.table$y_s))
 factor_order_ch <- factor_order_plus_tmp[factor_order_ch_tmp != 'Na']
 
-pp3 <-  ch.final.table %>% mutate(val=val/100) %>%
+names_order_ch_sample_tmp <- as.vector(outer(factor_order, long_names, FUN = get_second_valid_inv,ss=ch.final.table$y_s))
+names_order_ch_sample <- names_order_ch_sample_tmp[names_order_ch_sample_tmp!= 'Na']
+
+date_order_ch_sample_tmp <- as.vector(outer(factor_order, long_names, FUN = get_first_valid_inv,ss=ch.final.table$y_s))
+date_order_ch_sample <- date_order_ch_sample_tmp[date_order_ch_sample_tmp!= 'Na']
+#per_sample_sample_color <-sapply(as.integer(as.factor(names_order_per_sample)),function(x) {return(hcl.colors(5, "viridis")[x])} )
+ch_sample_color <-sapply(as.integer(as.factor(names_order_ch_sample)),function(x) {return(div_text_color[x])} )
+
+
+pp3 <-  ch.final.table %>% #mutate(val=val/100) %>%
   mutate(x_s=fct_relevel(x_s,factor_order_ch)) %>%
   mutate(y_s=fct_relevel(y_s,factor_order_ch)) %>%
   ggplot( aes(x_s,y_s, fill=val,color=sample_name)) + 
   geom_tile(size=0) +
   #scale_fill_gradientn(breaks = c(0.001,0.1, 0.25, 0.5),colors=c('#ffeda0','#feb24c','#f03b20','#000000'),values = c(0,0.5,0.95,1),na.value="grey90") +
-  scale_fill_viridis_c(direction = -1) +
-    theme_classic() +
-  theme(axis.text.x = element_text(angle = 90),
+  scale_fill_viridis_c(direction = -1,name="Shared Top100\nClones") +
+  theme_classic() +
+  scale_x_discrete(labels=date_order_ch_sample) +
+  scale_y_discrete(labels=date_order_ch_sample) +
+  #  theme(panel.background=element_rect(fill="grey95", colour="grey95")) +
+  theme(axis.text.x = element_text(angle = 90,color = ch_sample_color, size = 10),
+        axis.text.y = element_text(color = ch_sample_color, size = 10),
         axis.title.x=element_blank(),
         axis.title.y=element_blank()) +
-  #  xlab("Sample") +
-  #  labs(fill='Dilution \nat threshold',
-  #       title = "Quiescent") +
-  #  My_Theme +
   coord_equal()
 
-png(height = 10, width = 10,units = 'in', res=300, file = 'test4.png')
-pp3 + geom_text(aes(label=round(val,digits = 2)),size=5, color='red') 
+png(height = 4, width = 5,units = 'in', res=300, file = 'per_sample_ch.png')
+pp3 + scale_colour_manual(name = 'the colour', values =c('pWAS02'='black','pWAS03'='red','pWAS04'='black','pWAS05 '='red'),
+                        labels =sample_to_color_df$sample[1:4] ,guide = 'legend') +
+  #  guides(fill=guide_legend("Shared Top100\nClones")) +
+  guides(colour=guide_legend("Subject", override.aes=list(shape=22,size=0, fill=sample_to_color_df$color[1:4])))
 dev.off()
 
+# per date charles ---------------
 factor_order_ch_date_tmp <- as.vector(outer(long_names,factor_order, FUN = inv_valid_paste, ss=ch.final.table$y_s))
 factor_order_ch_date <- factor_order_ch_date_tmp[factor_order_ch_date_tmp != 'Na']
 
+date_order_ch_date_tmp <- as.vector(outer(long_names,factor_order, FUN = get_second_valid,ss=ch.final.table$y_s))
+date_order_ch_date <- date_order_ch_date_tmp[date_order_ch_date_tmp != 'Na']
 
-pp4 <-  ch.final.table %>% mutate(val=val/100) %>%
+names_order_ch_date_tmp <- as.vector(outer(long_names,factor_order, FUN = get_first_valid,ss=ch.final.table$y_s))
+names_order_ch_date <- names_order_ch_date_tmp[names_order_ch_date_tmp != 'Na']
+
+ch_date_color <-sapply(as.integer(as.factor(names_order_ch_date)),function(x) {return(div_text_color[x])} )
+
+pp4 <-  ch.final.table %>% #mutate(val=val/100) %>%
   mutate(x_s=fct_relevel(x_s,factor_order_ch_date)) %>%
   mutate(y_s=fct_relevel(y_s,factor_order_ch_date)) %>%
   ggplot( aes(x_s,y_s, fill=val,color=sample_name)) + 
   geom_tile(size=0) +
   #scale_fill_gradientn(breaks = c(0.001,0.1, 0.25, 0.5),colors=c('#ffeda0','#feb24c','#f03b20','#000000'),values = c(0,0.5,0.95,1),na.value="grey90") +
-  scale_fill_viridis_c(direction = -1) +
+  scale_fill_viridis_c(direction = -1,name="Shared Top100\nClones") +
   theme_classic() +
-  theme(axis.text.x = element_text(angle = 90),
+  scale_x_discrete(labels=date_order_ch_date) +
+  scale_y_discrete(labels=date_order_ch_date) +
+  #  theme(panel.background=element_rect(fill="grey95", colour="grey95")) +
+  theme(axis.text.x = element_text(angle = 90,color = ch_date_color,size = 10),
+        axis.text.y = element_text(color = ch_date_color,size = 10),
         axis.title.x=element_blank(),
         axis.title.y=element_blank()) +
-  #  xlab("Sample") +
-  #  labs(fill='Dilution \nat threshold',
-  #       title = "Quiescent") +
-  #  My_Theme +
   coord_equal()
 
-png(height = 10, width = 10,units = 'in', res=300, file = 'test5.png')
-pp4 + geom_text(aes(label=round(val,digits = 2)),size=5, color='red') 
+png(height = 4, width = 5,units = 'in', res=300, file = 'per_date_ch.png')
+pp4 + 
+  scale_colour_manual(name = 'the colour', values =c('pWAS02'='black','pWAS03'='red','pWAS04'='black','pWAS05 '='red'),
+                          labels =sample_to_color_df$sample[1:4] ,guide = 'legend') +
+#  guides(fill=guide_legend("Shared Top100\nClones")) +
+  guides(colour=guide_legend("Subject", override.aes=list(shape=22,size=0, fill=sample_to_color_df$color[1:4])))
 dev.off()
 
