@@ -1,8 +1,9 @@
 ---
-title: "WAS report 1"
+title: "WAS report 2"
 date: "`r format(Sys.time(), '%d %B, %Y')`"
 output: pdf_document
-name: "Adrian Cantu"
+name: "Report"
+author : "Adrian Cantu"
 header-includes:
     - \usepackage{float}
 ---
@@ -20,7 +21,7 @@ library(kableExtra)
 Samples of different blood cells from patients with Wiskott-Aldrich syndrome where essayed for insertion site at different time point after gene therapy treatment.
 
 
-```{r sample_table_t0, echo=FALSE, results='asis'}
+```{r sample_table_t0, echo=FALSE}
 pWAS.list <- readRDS('pWAS.list.rds')
 
 pwas.time <- function(x){
@@ -67,7 +68,10 @@ data_samples <-imap(tabs,function(pt,x){
 
 all_data_samples<-reduce(data_samples,rbind)
 colnames(all_data_samples) <- c("Subject",factor_order)
+```
 
+
+```{r print_tab, results='asis', echo=FALSE}
 all_data_samples %>% 
   mutate(across('0 DAYS':'5 YEARS',~ifelse(.x==TRUE,'X',.x))) %>%
   mutate(across('0 DAYS':'5 YEARS',~ifelse(.x==FALSE,'',.x))) %>%
@@ -83,8 +87,7 @@ jaccard(A,B)=\frac{\left | A\bigcap B \right |}{\left | A \bigcup B \right |}
 $$
 
 
-
-```{r, echo=FALSE, out.width="100%",fig.align="center" ,fig.cap="Samples arranged per date"}
+```{r pdj, echo=FALSE, out.width="100%",fig.align="center" ,fig.cap="Samples arranged per date"}
 knitr::include_graphics("per_date_jaccard.png")
 ```
 
@@ -99,3 +102,28 @@ As time passes, you would expect to lose some insertion site diversity as those 
 ```{r, echo=FALSE, out.width="100%",fig.align="center" ,fig.cap="Simpson per Cell Type and Subject"}
 knitr::include_graphics("cellTypeSimpsonPlot.png")
 ```
+
+## MCMC posteriori populations
+
+The sampling of insertion sites by sequencing is imperfect; the relative abundance of observed clones are only approximations of the real ones. Worse still, most of the low abundance clones might not have been sampled at all. To address this, a Markov Chain Monte Carlo was developed by Charles Berry. Briefly, a Bayesian hierarchical model is used to update the relative abundance distribution and samples are pulled from the posteriori every 20 steps or so. After doing this for each sequencing sample, the top 100 abundant clones can be identified for each subject/time combination (those clones might or might not correspond to an insertion site that was observed). Some proportion of the clones might be shared between samples of the same subject.
+
+```{r, echo=FALSE, out.width="100%",fig.align="center" ,fig.cap="Posteriori top100 arranged per Subject"}
+knitr::include_graphics("per_sample_ch.png")
+```
+
+```{r, echo=FALSE, out.width="100%",fig.align="center" ,fig.cap="Posteriori top100 arranged per Date"}
+knitr::include_graphics("per_date_ch.png")
+```
+
+## Comments
+
+* Diversity of insertion sites drops with time, this is consistent in all subjects.
+* From the Jaccard distances, it seems like the loss of diversity of insertion sites accelerates at around year 2.
+* This might correspond to the death of short term progenitor cells
+* The MCMC approach suggest that the Jaccard distance is underestimating the proportion of shared insertion sites.
+
+## TODO?
+Not sure if I should spend more time doing those
+
+* I was unable to reproduce the tables shared in a power point presentation. Should I contact the author?
+* MCMC was only done for a handful of samples. Rick's recollection is that convergence was an issue, but it might be worthy to try it with more samples.
