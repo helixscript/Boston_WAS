@@ -12,9 +12,9 @@ samples <- dbGetQuery(dbConn, 'select * from gtsp where Trial="WAS_Boston"')
 
 if(! file.exists('intSites.rds')){
   intSites <- gt23::getDBgenomicFragments(samples$SpecimenAccNum, 'specimen_management', 'intsites_miseq') %>%
-              gt23::stdIntSiteFragments() %>%
+              gt23::stdIntSiteFragments(CPUs = 2) %>%
               gt23::collapseReplicatesCalcAbunds() %>%
-              gt23::annotateIntSites()
+              gt23::annotateIntSites(CPUs = 2)
   
   saveRDS(intSites, 'intSites.rds')
 } else {
@@ -38,7 +38,14 @@ d <- group_by(data.frame(intSites), patient, cellType) %>%
      arrange(patient, desc(nTimePoints)) 
 
 
+original_names <- c("WAS00002","WAS00003","WAS00004","WAS00005","WAS00006")
+new_names <- c('Pt 1','Pt 2','Pt 4','Pt 3','Pt 5')
+names(new_names) <- original_names
+names(pWAS.list) <- new_names[names(pWAS.list)]
+
+
 d <- group_by(data.frame(intSites), patient, cellType, timePoint) %>%
+       mutate(patient=new_names[patient]) %>%
        summarise(Chao1   = round(estimateR(estAbund, index='chao')[2], 0),
                  Shannon = diversity(estAbund),
                  Simpson = 1-diversity(estAbund, index = "simpson"),
@@ -54,8 +61,8 @@ d$timePoint <- factor(d$timePoint, levels = unique(sort(unique(d$timePoint))))
 d$patient   <- factor(d$patient, levels = unique(sort(unique(d$patient))))
 
 
-colors <- grDevices::colorRampPalette(RColorBrewer::brewer.pal(12, "Paired"))(n_distinct(d$patient))
-
+colors_np <- grDevices::colorRampPalette(RColorBrewer::brewer.pal(12, "Paired"))(n_distinct(d$patient))
+colors <- c('blue','red','green','orange','purple')
 ShannonPatientPlot <- function(x){ 
   ggplot(x, aes(timePoint, Shannon, color = patient, group = patient)) +
   theme_bw()+
@@ -80,7 +87,7 @@ ggsave(shannonPatientPlotPBMC,       file = 'shannonPatientPlotPBMC.pdf', width 
 cellTypeShannonPlot <-
   ggplot(filter(d, nSites >= 100, cellType != 'Whole blood'), aes(timePoint, Shannon, color = cellType, group = cellType)) +
     theme_bw()+
-    scale_color_manual(name = 'Cell type', values = colors) +
+    scale_color_manual(name = 'Cell type', values = colors_np) +
     geom_point(size = 3) +
     geom_line() +
     scale_y_continuous(breaks=seq(0, 10, by = 1.0))+
@@ -120,7 +127,7 @@ ggsave(SimpsonPatientPlotPBMC,       file = 'SimpsonPatientPlotPBMC.png', width 
 cellTypeSimpsonPlot <-
   ggplot(filter(d, nSites >= 100, cellType != 'Whole blood'), aes(timePoint, Simpson_nr, color = cellType, group = cellType)) +
   theme_bw()+
-  scale_color_manual(name = 'Cell type', values = colors) +
+  scale_color_manual(name = 'Cell type', values = colors_np) +
   geom_point(size = 3) +
   geom_line() +
   scale_y_continuous(breaks=seq(0, 0.8, by = 0.2), limits = c(0,0.8))+
@@ -139,6 +146,7 @@ ggsave(cellTypeSimpsonPlot, file = 'cellTypeSimpsonPlot.png', width = 10, height
 
 # Add nearest feature flags.
 d <- data.frame(intSites) %>%
+  mutate(patient=new_names[patient]) %>%
      mutate(labeledNearestFeature = paste0(nearestFeature, ' ')) %>% 
      mutate(labeledNearestFeature = ifelse(inFeature, paste0(labeledNearestFeature, '*'), labeledNearestFeature)) 
 
@@ -160,7 +168,7 @@ abundantClones <- bind_rows(lapply(split(d, paste(d$patient, d$cellType)), funct
   x$totalCells <- sum(x$estAbund)
   
   # Add one more clone to the patient with the most sites to balance out the figure legend.
-  if (x$patient == 'WAS00002') numClones <- numClones+1 
+  if (x$patient == 'Pt 1') numClones <- numClones+1 
   
   # Adjust the number of clones to return based on the number of sites per cell type.
   if(nrow(x) < numClones) numClones <- nrow(x)

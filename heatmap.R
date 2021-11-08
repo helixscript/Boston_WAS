@@ -21,6 +21,13 @@ pwas.time <- function(x){
   res
 }
 
+original_names <- c("pWAS02","pWAS03","pWAS04","pWAS05","pWAS06")
+new_names <- c('Pt 1','Pt 2','Pt 4','Pt 3','Pt 5')
+names(new_names) <- original_names
+names(pWAS.list) <- new_names[names(pWAS.list)]
+pWAS.list <- pWAS.list[c('Pt 1','Pt 2','Pt 3','Pt 4','Pt 5')]
+
+
 tabs <-
   imap(pWAS.list,
          function(pt,x){
@@ -92,7 +99,8 @@ names_order_per_date <- names_order_per_date_tmp[names_order_per_date_tmp != 'Na
 # old viridis text
 #per_date_sample_color <- sapply(as.integer(as.factor(names_order_per_date)),function(x) {return(hcl.colors(5, "viridis")[x])} )
 #sample_to_color_df <- data.frame(sample=names(long_tables),color=hcl.colors(5, "viridis"))
-div_text_color <- c('#1b9e77','#d95f02','#7570b3','#e7298a','#66a61e')
+#div_text_color <- c('#1b9e77','#d95f02','#7570b3','#e7298a','#66a61e')
+div_text_color <- c('blue','red','green','orange','purple')
 per_date_sample_color <- sapply(as.integer(as.factor(names_order_per_date)),function(x) {return(div_text_color[x])} )
 sample_to_color_df <- data.frame(sample=names(long_tables),color=div_text_color)
 #========

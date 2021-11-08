@@ -32,13 +32,11 @@ as.data.frame(m05) %>%
   pivot_longer(!y,values_to='val', names_to='x')
 
 
-names(pWAS.list)
-
 ch.list <-
-  list('pWAS02'=list(table=m02),
-     'pWAS03'=list(table=m03),
-     'pWAS04'=list(table=m04),
-     'pWAS05'=list(table=m05))
+  list('Pt 1'=list(table=m02),
+     'Pt 2'=list(table=m03),
+     'Pt 4'=list(table=m04),
+     'Pt 3'=list(table=m05))
 
 long_tables <- imap(ch.list,function(tab,name){
   factor_order <- c("0 DAYS","1 MONTHS","1.5 MONTHS","3 MONTHS","6 MONTHS","9 MONTHS",
