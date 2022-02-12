@@ -4,6 +4,9 @@ library(RMySQL)
 library(gt23)
 library(GenomicRanges)
 library(vegan)
+library(untb)
+library(egg)
+library(gridtext)
 
 invisible(sapply(dbListConnections(MySQL()), dbDisconnect))
 dbConn  <- dbConnect(MySQL(), group='specimen_management')
@@ -11,9 +14,9 @@ samples <- dbGetQuery(dbConn, 'select * from gtsp where Trial="WAS_Boston"')
 
 if(! file.exists('intSites.rds')){
   intSites <- gt23::getDBgenomicFragments(samples$SpecimenAccNum, 'specimen_management', 'intsites_miseq') %>%
-              gt23::stdIntSiteFragments() %>%
+              gt23::stdIntSiteFragments(CPUs = 2) %>%
               gt23::collapseReplicatesCalcAbunds() %>%
-              gt23::annotateIntSites()
+              gt23::annotateIntSites(CPUs = 2)
   
   saveRDS(intSites, 'intSites.rds')
 } else {
@@ -37,9 +40,19 @@ d <- group_by(data.frame(intSites), patient, cellType) %>%
      arrange(patient, desc(nTimePoints)) 
 
 
+original_names <- c("WAS00002","WAS00003","WAS00004","WAS00005","WAS00006")
+new_names <- c('Pt 1','Pt 2','Pt 4','Pt 3','Pt 5')
+names(new_names) <- original_names
+#names(pWAS.list) <- new_names[names(pWAS.list)]
+
+
 d <- group_by(data.frame(intSites), patient, cellType, timePoint) %>%
+       mutate(patient=new_names[patient]) %>%
        summarise(Chao1   = round(estimateR(estAbund, index='chao')[2], 0),
                  Shannon = diversity(estAbund),
+                 Simpson = 1-diversity(estAbund, index = "simpson"),
+                 Simpson_nr = simpson(estAbund, with.replacement=FALSE),
+                 Simpson_inv = diversity(estAbund, index = "invsimpson"),
                  nSites  = n_distinct(posid)) %>%
      ungroup() %>%
      filter(cellType %in% c("Whole blood", "T cells", "Neutrophils", "NK cells", "PBMC", "B cells"))
@@ -50,8 +63,8 @@ d$timePoint <- factor(d$timePoint, levels = unique(sort(unique(d$timePoint))))
 d$patient   <- factor(d$patient, levels = unique(sort(unique(d$patient))))
 
 
-colors <- grDevices::colorRampPalette(RColorBrewer::brewer.pal(12, "Paired"))(n_distinct(d$patient))
-
+colors_np <- grDevices::colorRampPalette(RColorBrewer::brewer.pal(12, "Paired"))(n_distinct(d$patient))
+colors <- c('blue','red','green','orange','purple')
 ShannonPatientPlot <- function(x){ 
   ggplot(x, aes(timePoint, Shannon, color = patient, group = patient)) +
   theme_bw()+
@@ -76,7 +89,7 @@ ggsave(shannonPatientPlotPBMC,       file = 'shannonPatientPlotPBMC.pdf', width 
 cellTypeShannonPlot <-
   ggplot(filter(d, nSites >= 100, cellType != 'Whole blood'), aes(timePoint, Shannon, color = cellType, group = cellType)) +
     theme_bw()+
-    scale_color_manual(name = 'Cell type', values = colors) +
+    scale_color_manual(name = 'Cell type', values = colors_np) +
     geom_point(size = 3) +
     geom_line() +
     scale_y_continuous(breaks=seq(0, 10, by = 1.0))+
@@ -91,8 +104,76 @@ cellTypeShannonPlot <-
 ggsave(cellTypeShannonPlot, file = 'cellTypeShannonPlot.pdf', width = 10, height = 7, units = 'in', useDingbats = FALSE)
 
 
+# aqui empiezan los plots de simson index por patient---------------
+SimpsonPatientPlot <- function(x){ 
+  ggplot(x, aes(timePoint, Simpson_nr, color = patient, group = patient)) +
+    theme_bw()+
+    scale_color_manual(name = 'Patient', values = colors) +
+    geom_point(size = 3) +
+    geom_line() +
+    scale_y_continuous(breaks=seq(0, 0.8, by = 0.1), limits=c(0,0.8))+
+     labs(x = 'Time point', y = 'Simpson index') +
+     theme(axis.text = element_text(size = 14),
+           axis.title = element_text(size = 16),
+           panel.grid.major = element_blank(), panel.grid.minor = element_blank(),
+           panel.background = element_blank(), axis.line = element_line(colour = "black"))
+}
+
+SimpsonPatientPlotWholeBlood <- SimpsonPatientPlot(filter(d, cellType == 'Whole blood', nSites >= 100))
+SimpsonPatientPlotPBMC <- SimpsonPatientPlot(filter(d, cellType == 'PBMC', nSites >= 100))
+
+ggsave(SimpsonPatientPlotWholeBlood, file = 'SimpsonPatientPlotWholeBlood.png', width = 10, units = 'in')
+ggsave(SimpsonPatientPlotPBMC,       file = 'SimpsonPatientPlotPBMC.png', width = 10, units = 'in')
+
+# aqui es por typo de celula -----------------
+cellTypeSimpsonPlot <-  ggplot(filter(d, nSites >= 100, cellType != 'Whole blood'), aes(timePoint, Simpson_nr, color = cellType, group = cellType)) +
+  theme_bw()+
+  scale_color_manual(name = 'Cell type', values = colors_np) +
+  geom_point(size = 3) +
+  geom_line() +
+  scale_y_continuous(breaks=seq(0, 0.8, by = 0.2), limits = c(0,0.8))+
+#  ylim(c(3,10)) +
+  labs(x = 'Time point', y = 'Simpson index') +
+  facet_grid(patient~.) +
+  theme(axis.text = element_text(size = 14),
+        axis.title = element_text(size = 16),
+        panel.grid.major.x = element_blank(), panel.grid.minor = element_blank(),
+        panel.background = element_blank(), axis.line = element_line(colour = "black"),
+        strip.background = element_blank(),
+        strip.text.y = element_blank()
+        )
+cellTypeSimpsonPlot
+
+dd <- data.frame(timePoint=c('M1','M1','M1','M1','M1'),
+                 Simpson_nr = c(0.7,0.7,0.7,0.7,0.7),
+                 cellType=c('PBMC','PBMC','PBMC','PBMC','PBMC'),
+                 patient = c('Pt 1','Pt 2','Pt 3','Pt 4','Pt 5')
+)
+
+grob_size <- 20
+grid_padd <- unit(c(3, 2, 1, 2), "pt")
+
+grid_labels <- list(
+  textbox_grob('Pt 1',width=NULL,height = NULL,padding = grid_padd, gp = gpar(fontsize = grob_size,col=colors[1]), box_gp = gpar(col = "black", fill = "grey92")),
+  textbox_grob('Pt 2',width=NULL,height = NULL,padding = grid_padd, gp = gpar(fontsize = grob_size,col=colors[2]), box_gp = gpar(col = "black", fill = "grey92")),
+  textbox_grob('Pt 3',width=NULL,height = NULL,padding = grid_padd, gp = gpar(fontsize = grob_size,col=colors[3]), box_gp = gpar(col = "black", fill = "grey92")),
+  textbox_grob('Pt 4',width=NULL,height = NULL,padding = grid_padd, gp = gpar(fontsize = grob_size,col=colors[4]), box_gp = gpar(col = "black", fill = "grey92")),
+  textbox_grob('Pt 5',width=NULL,height = NULL,padding = grid_padd, gp = gpar(fontsize = grob_size,col=colors[5]), box_gp = gpar(col = "black", fill = "grey92"))
+)
+#dd$grob <- grob
+dd$grid_l <- grid_labels 
+
+cellTypeSimpsonPlot_ll <- cellTypeSimpsonPlot + geom_custom(data = dd, aes(data = grid_l), grob_fun = identity) 
+
+
+ggsave(cellTypeSimpsonPlot_ll, file = 'cellTypeSimpsonPlot.pdf', width = 10, height = 7, units = 'in')
+
+# aqui acaban los plots ------------
+
+
 # Add nearest feature flags.
 d <- data.frame(intSites) %>%
+  mutate(patient=new_names[patient]) %>%
      mutate(labeledNearestFeature = paste0(nearestFeature, ' ')) %>% 
      mutate(labeledNearestFeature = ifelse(inFeature, paste0(labeledNearestFeature, '*'), labeledNearestFeature)) 
 
@@ -114,7 +195,7 @@ abundantClones <- bind_rows(lapply(split(d, paste(d$patient, d$cellType)), funct
   x$totalCells <- sum(x$estAbund)
   
   # Add one more clone to the patient with the most sites to balance out the figure legend.
-  if (x$patient == 'WAS00002') numClones <- numClones+1 
+  if (x$patient == 'Pt 1') numClones <- numClones+1 
   
   # Adjust the number of clones to return based on the number of sites per cell type.
   if(nrow(x) < numClones) numClones <- nrow(x)
@@ -161,11 +242,12 @@ x$posidLabel <- factor(x$posidLabel, levels = c('LowAbund', unique(o$posidLabel)
 x <- x[order(x$timePointDays),]
 x$timePoint  <- factor(x$timePoint, levels = (unique(sort(x$timePoint)))) 
 
-  
+#sub('^.*\\n','',names(cloneColorsVector))
+
 p <- ggplot(x) +
     theme_bw() +
     scale_x_discrete(drop=FALSE) + 
-    geom_bar(aes(timePoint, relAbund/100, fill=posidLabel), stat='identity', color = 'black', size = 0.20) + 
+    geom_bar(aes(x=timePoint, y=relAbund/100, fill=posidLabel), stat='identity', color = 'black', size = 0.20) + 
     scale_fill_manual(name = 'Clones', values = cloneColorsVector) +
     #scale_shape_manual(values = c(16, 17, 15), drop = FALSE) +
     labs(x = 'Timepoint', y = 'Relative Sonic Abundance') +
@@ -179,7 +261,31 @@ p <- ggplot(x) +
     guides(fill=guide_legend(ncol=2)) +
     facet_grid(patient~.) 
 
-ggsave(p, file = 'patientRelAbund.pdf', height = 10, width = 15, units = 'in', useDingbats = FALSE)
+p
 
+g_label <- sub('^.*\\n','',names(cloneColorsVector))
+g_label <- sub('LOC101928298','GDPD3 *~',g_label)
+               
+ddd <- data.frame(timePoint=c(1.5,1.5,1.5,1.5,1.5),
+                  relAbund = c(0.16,0.16,0.16,0.16,0.16),
+                  posidLabel=c("LowAbund","LowAbund","LowAbund","LowAbund","LowAbund"),
+                 patient = c('Pt 1','Pt 2','Pt 3','Pt 4','Pt 5')
+)
+
+ddd$grid_l <- grid_labels 
+
+p_new <- p + scale_fill_manual(
+  values = cloneColorsVector,
+  limits = names(cloneColorsVector),
+  labels = g_label
+) + theme(         
+  strip.background = element_blank(),
+  strip.text.y = element_blank()
+) + geom_custom(data = ddd, aes(x=timePoint,y=relAbund,data = grid_l), grob_fun = identity) 
+
+
+
+ggsave(p, file = 'patientRelAbund_old.pdf', height = 10, width = 15, units = 'in', useDingbats = FALSE)
+ggsave(p_new, file = 'patientRelAbund.pdf', height = 10, width = 15, units = 'in', useDingbats = FALSE)
 
 

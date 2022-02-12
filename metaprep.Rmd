@@ -1,0 +1,654 @@
+---
+# YAML header created by ox-ravel
+title: Preparing WAS metadata
+author: Charles Berry
+---
+```{r  metaprep-loads, cache=2, echo=FALSE, warning=FALSE }
+library(xlsx)
+
+ngDNA <- read.xlsx(Sys.glob("*081220.xlsx"),sheetIndex=1)
+ngDNA[,"CellType"][ngDNA[,"CellType"]=="CD3+ Cells"] <- "T CELLS"
+ngDNA[,"CellType"] <- sub("cells","CELLS", ngDNA[,"CellType"])
+ngDNA[ , "ngInput"] <- as.numeric(ngDNA[ , "ngInput"])
+is.na(ngDNA[ , "ngInput"]) <- ngDNA[ , "ngInput"]<0
+ngDNA[,"VCN"] <- as.numeric(ngDNA[,"VCN"])
+ngDNA[,"Patient"] <- sub("pWAS000","WAS",ngDNA[,"Patient"])
+pWAS.list <-
+  lapply(Sys.glob("pWAS00*.RData"),
+	 function(x) {
+	   load(x)
+	   list(d=d,sampleData=sampleData)})
+pt.names <-
+  sub("0+","0", sapply(pWAS.list,function(x) unique(x$d$patient)))
+
+names(pWAS.list) <- pt.names
+
+for (i in pt.names)
+  pWAS.list[[i]]$d$cellType["CD3+ CELLS" == pWAS.list[[i]]$d$cellType] <-  "T CELLS"
+
+pwas.time <- function(x){
+  dot.for.dash <- function(x) sub("[-_]",".",x)
+  d.nought <- function(x) sub("d0.*","D0",x,ignore.case=TRUE)
+  d42.to.wk6 <- function(x) sub("^d4[25]$","wk6",x)
+  pwas.unit <- function(x) c(WK = "WEEKS", M="MONTHS", Y="YEARS", D="DAYS")[
+			     sub("[[:digit:]].*$","",x)]
+  pwas.timeval <- function(x) sub("[[:alpha:]]+","",x)
+  x <- as.character(x)
+  tm <- toupper( d42.to.wk6( d.nought( dot.for.dash( x ))))
+  res <- paste(pwas.timeval( tm ), pwas.unit( tm ))
+  res[ res == "18 MONTHS" ]  <- "1.5 YEARS"
+  res[ res == "30 MONTHS" ]  <- "2.5 YEARS"
+  res[ res == "42 MONTHS" ]  <- "3.5 YEARS"
+  res[ res == "32 DAYS" ]  <- "1 MONTHS"
+  res[ res %in% c("45 DAYS", "42 DAYS") ]  <- "1.5 MONTHS"
+  res[ res == "6 WEEKS" ]  <- "1.5 MONTHS"
+  res
+}
+
+time.order <- function(x,pt){
+  x <- as.character(x)
+  y <- as.numeric(sub("[ ]+.*$","",x))
+  units <- sub("^.*[ ]+","",x)
+  order(pt,units,y)
+}
+
+
+sampleData.times <- sapply(pWAS.list,function(x) xtabs(~pwas.time(Timepoint)+CellType,x$sampleData)[,c(1,4,5,7)])
+
+d.times <- sapply(pWAS.list,function(x) xtabs(~pwas.time(timePoint)+cellType,x$d)[,c(1,4,5,7)])
+
+
+## mapply(function(x,y) setdiff(rownames(x)[rowSums(x)>0],
+##			     rownames(y)[rowSums(y)>0]), sampleData.times, d.times)
+
+times.plus <- function(x) sapply(x, function(x) rownames(x)[rowSums(x)>0])
+
+d.times.df <-
+  do.call(rbind,
+	  mapply(function(x,y) data.frame(pt=x,unclass(y)),
+		 names(d.times),d.times,SIMPLIFY=FALSE))
+
+d.times.df[,"timePoint"] <- sub("pWAS[0-9]+.","",rownames(d.times.df))
+d.times.df[,"pt"] <- sub("^p(WAS[0-9]+)$","\\1", d.times.df[,"pt"])
+
+
+library(xlsx)
+
+xl.path <- Sys.glob("20200608*xlsx")
+
+wb <- loadWorkbook(xl.path)
+sheets <- getSheets(wb)
+
+## names(sheets)
+
+## get data as list of lists with elts like:
+
+##  ..$ 1.18 : chr "VCN Date:"
+##  ..$ 1.19 : chr "CBC Date:"
+##  ..$ 1.20 : chr "X- Values Not available "
+##  ..$ 2.1  : chr "WAS002 1 year"
+
+## the names index the row.column of the elts
+
+sheet.list <- lapply(names(sheets),
+		     function(nm) read.xlsx(xl.path, sheetName=nm,as.data.frame=FALSE))
+
+## list of data.frames
+
+## the elts in sheet.list appear here too.
+
+sheet.list.2 <- lapply(names(sheets),
+		       function(nm) read.xlsx(xl.path,
+					      sheetName=nm,
+					      header=FALSE,
+					      as.data.frame=TRUE))
+
+## confirm location and content of "WAS.*" text:
+
+was.text  <-  lapply(sheet.list.2,function(sht)
+  Filter(length,sapply(sht[,1:3],function(x) grep("WAS",x,value=TRUE))))
+
+
+was.col2 <-
+  sapply(sheet.list.2,function(sht)
+    which(lengths(sapply(sht,function(x) grep("WAS",x)))>0)[2])
+
+## data.frame(was.text[[1]][[1]],was.col2[[1]][[1]])
+
+
+## look for "CD" column header rows:
+
+sht.hdr.2 <-
+  mapply( function(cl2,sht) grep("CD",sht[,cl2+3]),
+	 was.col2, sheet.list.2,SIMPLIFY=FALSE)
+
+## scrape the column names:
+
+sht.hdr.names <-
+  mapply(function(sht,hdr,cl2) sht[hdr,cl2+(3:9)],
+	 sheet.list.2,sht.hdr.2,was.col2,
+	 SIMPLIFY=FALSE)
+
+## note variant spellings and/or NAs in X17 X18
+names.OK <-
+  sapply(sht.hdr.names,function(x) sapply(x,function(y) isTRUE(all(y[1]==y))))
+
+names.rc <- cbind( col(names.OK)[!names.OK], row(names.OK)[!names.OK])
+
+## these are benign - capitals, plurals or dates
+## apply(names.rc,1,function(x) sht.hdr.names[[x]])
+
+
+## check that row names are all the same:
+
+sht.rw.names <-   mapply(function(sht,hdr,cl2)
+    lapply(hdr, function(rw) unlist(sht[rw+(1:4),cl2])),
+    sheet.list.2,sht.hdr.2,was.col2,SIMPLIFY=FALSE)
+
+
+rownames.ok <- sapply(sht.rw.names,
+       function(x) sapply(x,
+			  function(y) isTRUE(all.equal(sht.rw.names[[1]][[1]],y))))
+
+## all(unlist(rownames.ok))
+
+sht.mat <-
+  mapply(function(sht,hdr,cl2)
+    lapply(hdr, function(rw) array(as.numeric(unlist(sht[rw+(1:4),cl2+(3:8)])),
+				   c(4,6))),
+    sheet.list.2,sht.hdr.2,was.col2,SIMPLIFY=FALSE)
+
+cross.pt.time <-
+  strsplit(unlist(was.text,use.names=FALSE), "(?!\\d) (?=\\d)", perl=TRUE)
+
+cross.clean.time <- sub("-",".",
+		      sub("[ S]+$","",
+			  toupper( sapply( cross.pt.time, '[', 2 ))))
+
+cross.clean.time <- ifelse(cross.clean.time=="30 DAY","1 MONTH", cross.clean.time)
+cross.clean.time <- ifelse(cross.clean.time=="18 MONTH","1.5 YEAR", cross.clean.time)
+cross.clean.time <- ifelse(cross.clean.time=="42 DAY","1.5 MONTH", cross.clean.time)
+cross.clean.time <- ifelse(cross.clean.time=="6 WEEK","1.5 MONTH", cross.clean.time)
+cross.clean.time <- paste0( cross.clean.time, "S")
+
+cross.pt <- sub("0+","0",sapply(cross.pt.time,'[',1))
+cross.clean.tab <- table( cross.clean.time, cross.pt )
+
+## get numbers of cells counted in contam grids:
+sht.mat.input <- sapply(unlist(sht.mat,recursive=FALSE),
+			function(x) rowSums(x[,1:4]))
+sht.rw.celltypes <- c("T CELLS", "NEUTROPHILS", "B CELLS",  "NK CELLS") 
+sht.input.df <- data.frame(pt=cross.pt,time=cross.clean.time,t(sht.mat.input))
+colnames(sht.input.df)[3:6]  <- sht.rw.celltypes
+xl.grid.path <-  Sys.glob("Contamination grid CBC.xlsx")
+
+gridCBC <- read.xlsx(xl.grid.path, sheetIndex=1,detectDates=TRUE)
+
+wblk <-   grep("^W[^-]+$",gridCBC[,1])
+
+wdash <- grep("^W.*-.*$",gridCBC[,1])
+
+cbcPt <- sub("GT","",gridCBC[wblk[ findInterval(wdash,wblk) ], 1])
+
+cbcTime <- sub(".* -[ ]*","",gridCBC[wdash,1])
+
+unabbrev <- c(M=" MONTHS", Y=" YEARS",wks=" WEEKS", BSL="0 DAYS")
+
+cbcUnit <- unabbrev[ sub("[.[:space:][:digit:]]+","",cbcTime) ]
+cbcUnit[ is.na(cbcUnit) ] <- " YEARS"
+
+cbcTime <- paste0(sub("[[:space:][:alpha:]].*$","",cbcTime),cbcUnit)
+cbcTime[ cbcTime == "18 MONTHS" ] <- "1.5 YEARS"
+cbcTime[ cbcTime == "6 WEEKS" ] <- "1.5 MONTHS"
+
+## table(cbcTime,cbcPt)
+
+common.times <- intersect(cbcTime,cross.clean.time)
+
+## table(cbcTime,cbcPt)[common.times,] - table( was.clean.time, sapply(was.pt.time,'[',1))[common.times,]
+
+names(gridCBC) <- c("pt.date","date.VCN","date.CBC","T CELLS","B CELLS","NK CELLS",
+		    "NEUTROPHILS","comment.1","Comment.2","Comment.3")
+
+gridCBC[,2]  <- 
+  as.Date(as.numeric(gridCBC[,2])-25569, origin="1970-01-01")
+gridCBC[,3]  <- 
+  as.Date(as.numeric(gridCBC[,3])-25569, origin="1970-01-01")
+
+gridCBC[,4:7]  <- lapply(gridCBC[,4:7],as.numeric)
+
+gridCBC[wdash,"Patient"] <- cbcPt
+gridCBC[wdash,"timePoint"] <- cbcTime
+
+
+## contamination grid counts by sample id:
+
+sht.tab <- ftable(xtabs(as.matrix(sht.input.df[,3:6])~pt+time,sht.input.df))
+## ftable(sht.tab,row.vars=2:1)
+
+
+## IS data counts - curate patient name
+pwas.df <-
+  do.call(rbind,
+	  lapply(pWAS.list,
+		 function(x) x$d[,c("patient","timePoint","cellType","estAbund")]))
+
+
+pwas.df[["patient"]] <- sub(".*WAS0+","WAS0",pwas.df$patient)
+
+pwas.tab <-
+  ftable(xtabs(estAbund~pwas.time(timePoint)+patient+cellType,pwas.df),
+	 row.vars=2:1)
+## note times are
+## D0, D0.TDX2, D0.TDX2.BAG, D0.TDX2.BAG, D32, D42, D45, M1, M1.5, M18,
+## M3, M30, M42, M6, M9, Y1, Y1.5, Y2, Y2.5, Y3, Y3.5, Y4, Y4.5, Y5
+
+ngDNA.tab <- ftable(xtabs(~pwas.time(Timepoint) + Patient +
+			    toupper(CellType),ngDNA),row.vars=2:1)
+
+## caps for cells
+
+
+CBC.tab <- ftable(
+  xtabs(as.matrix(gridCBC[wdash,c(4,7,5,6)])~timePoint+Patient,gridCBC[wdash,]),
+  row.vars=2:1)
+
+
+contam.df <- cbind(as.data.frame(sht.tab),source="contam")
+is.df <- cbind(as.data.frame(pwas.tab),source="IS")
+dna.df <- cbind(as.data.frame(ngDNA.tab),source="DNA")
+cbc.df <- cbind(as.data.frame(CBC.tab),source="CBC")
+
+
+colnames(contam.df) <- colnames(cbc.df) <-
+  colnames(is.df) <- colnames(dna.df) <- 
+  c("Patient", "timePoint", "CellType", "Freq", "source")
+
+sources.df <-
+  as.data.frame(
+    rbind(
+      as.matrix(contam.df),
+      as.matrix(is.df),
+      as.matrix(cbc.df),
+      as.matrix(dna.df)))
+
+sources.df[["Freq"]] <- as.numeric( sources.df[["Freq"]] )
+
+sources.tab <- ftable(
+  xtabs( I(Freq>0) ~ Patient + timePoint + CellType + source,
+	sources.df),
+  col.vars=4)
+
+
+four.celltypes <- c("T CELLS", "B CELLS","NEUTROPHILS", "NK CELLS")
+
+sources.tab1 <-
+  xtabs( I(Freq>0) ~ Patient + timePoint + CellType + source,
+	sources.df,subset=CellType %in% four.celltypes)
+
+
+pt.tm <- apply(sources.tab1,c(1,2),sum)
+
+
+pt.tm.complete <- subset(as.data.frame.table(t(pt.tm)==16),Freq==TRUE)
+
+library(cellTypeCompositions)
+
+wttabs <- list()
+
+for (i in 1:nrow(pt.tm.complete)){
+  pt <- paste0("p",pt.tm.complete[i,"Patient"])
+  tm <- as.character(pt.tm.complete[i,"timePoint"])
+  tab <- xtabs(estAbund~posid+cellType,
+	       pWAS.list[[pt]]$d,
+	       subset=cellType %in% four.celltypes & pwas.time(timePoint)==tm)
+  wttabs[[i]] <- uniTab(tab)
+}
+
+pt.tm.names <-
+  make.names(
+    with(pt.tm.complete,paste(Patient,timePoint,sep=",")))
+
+wt.ct.names <- colnames(wttabs[[1]]$tab)
+
+pre.counts <- list()
+for (i in 1:nrow(pt.tm.complete)){
+  pt <- as.character(pt.tm.complete[i,"Patient"])
+  tm <- as.character(pt.tm.complete[i,"timePoint"])
+  cnts <- subset(gridCBC,
+		 subset=Patient == pt & timePoint==tm,
+		 select=wt.ct.names)
+  pre.counts[[i]] <-
+    cnts * ifelse(wt.ct.names == "NEUTROPHILS", 1000,1)
+}
+
+cross.ct.order <- match(wt.ct.names,sht.rw.celltypes)
+
+cross.counts <- list()
+for (i in 1:nrow(pt.tm.complete)){
+  Patient <- as.character(pt.tm.complete[i,"Patient"])
+  tm <- as.character(pt.tm.complete[i,"timePoint"])
+  pt.indx <- match(Patient, as.character(unique(sht.input.df$pt)))
+  tm.indx <- match(tm, with(sht.input.df,time[Patient == pt]))
+  cnts <- sht.mat[[pt.indx]][[tm.indx]][cross.ct.order,cross.ct.order]
+  cross.counts[[i]] <- cnts
+}
+
+
+dna.wts <- list()
+for (i in 1:nrow(pt.tm.complete)){
+  pt <- as.character(pt.tm.complete[i,"Patient"])
+  tm <- as.character(pt.tm.complete[i,"timePoint"])
+  df <- subset(ngDNA,
+	       subset=pt==Patient & pwas.time(Timepoint) == tm)
+
+  dna.wts[[i]] <- df[match(wt.ct.names,toupper(df$CellType)),
+		     c("ngInput","corrected.nginput","VCN")]
+
+}
+
+## mis-class probs estimated separately
+mcs <- mapply(
+  function(x,y) {
+    pre <- diag(prop.table(x[1,]))
+    cross <- prop.table(y,1)
+    t( prop.table( pre %*% cross, 2))
+  }, pre.counts,cross.counts,
+  SIMPLIFY=FALSE)
+
+## estimated by combining counts from different samples
+## t(prop.table(diag(Reduce("+",pre.counts))%*% prop.table(Reduce("+",cross.counts),1),2))
+
+## estimated by smoothing to Dirichlet prior
+mcs2 <-
+  mapply(
+    function(x,y) {
+      pre <- diag(prop.table(x[1,]))
+      cross <- prop.table(y+0.1,1)
+      t( prop.table( pre %*% cross, 2))
+  },
+  pre.counts,cross.counts,
+  SIMPLIFY=FALSE)
+
+
+psi <- mapply(function(pre,wt) {
+  y <- wt$corrected.nginput/unlist(pre)
+  y/max(y)}, pre.counts,dna.wts,SIMPLIFY=FALSE)
+
+om <- mapply(function(post,cross) cross%*%diag(post),
+	     psi,mcs2,SIMPLIFY=FALSE)
+
+psi2 <- mapply(function(tab,wt,pre) {
+  y <- colSums(tab$tab*tab$n)/as.numeric(wt$VCN)
+  y <- y/pre
+  y/max(y)
+}, wttabs, dna.wts,pre.counts,SIMPLIFY=FALSE)
+
+om2 <- mapply(function(post,cross) cross%*%diag(post),
+	     psi2,mcs2,SIMPLIFY=FALSE) 
+```
+
+The aim of this document is provide a description of
+
+1.  The construction a depletion matrix that quantifies the relative
+    frequencies with which cells of a given type are sequenced for
+    integration site (IS) detection.
+
+2.  Further curation of metadata files used in that matrix.
+
+
+# Metadata files
+
+The metadata for the analysis of cell type composition in WAS patients
+comes in three files:
+
+-   **DNA amounts:** From the file `r paste0("\U0060",Sys.glob("*081220.xlsx"),"\U0060") `
+
+-   **Pre-Sort Cell Proportions:** From the file `Contamination grid CBC.xlsx`
+
+-   **Post-sort Counts:** From the file `r paste0("\U0060",Sys.glob("20200608*xlsx"),"\U0060") `
+
+As is obvious, these files are EXCEL spreadsheets and come with the
+usual assortment of defects and inconsistencies associated with such
+hand-crafted documents.  The correction of these is necessary to use
+the data in the files in any programmatic fashion. To this end, I
+establish consistent sets of
+
+1.  Timepoint names
+2.  Cell Type names
+3.  Patient Names
+
+These names are used to establish mappings from one file to another
+and to the `*.RData` files found at <http://bushmanlab.org/> in the
+`data/export/projects/gtVISA/Boston_WAS/subjectReports/` directory and
+the data elements within them.  In addition, these files require some
+further curation to get consistency.
+
+
+# DNA Amounts
+
+Initially, the DNA amounts file is read in using the `xlsx::read.xlsx`
+R function.
+
+-   In the `CellType` column `CD3+ Cells` is changed to `T CELLS`
+
+-   The word `cells` is rendered in upper case when it appears in the
+    `CellType` column
+
+-   The `ngDNA` column is converted to numeric mode and values less than
+    zero are rendered as `NA`.
+
+-   The `VCN` column is converted to numeric.
+
+-   The `Patient` column entries are rendered as `WAS0d` wehere `d` is
+    one of 2, 3, 4, 5, or 6.
+
+
+# pWAS000\*.RData files
+
+The `*.RData` files are read in. Each of these has a collection of
+objects, but only two are of interest here.
+
+-   **d:** a `data.frame` containing information about the integration
+    sites: `posid` (the IS identifier), `CellType`, `timePoint` and
+    `estAbund` (the presumed number of cells sharing that `posid`,
+    `CellType` and `timePoint` )
+
+-   **sampleData:** a `data.frame` giving some details of the samples
+
+These files are read as a single list containing one element for each
+file which is a list with elements `d` and `sampleData`.
+
+The patient names for the corresponding list elements are extracted as
+the unique value of `d$patient` and rendered in the same format as
+used in the DNA Amount `Patient` column.
+
+The times in the `d$timePoint` columns are revised as follows:
+
+-   use decimals, not dashes or underscores to denote decimal fractions
+-   use `MONTHS` and `YEARS` as the time units except for `D0`
+-   let 42 and 45 days each be `1.5 MONTHS`
+
+
+# Post-sort Counts
+
+The file `r paste0("\U0060",Sys.glob("20200608*xlsx"),"\U0060") `
+contains multiple *sheets* which are read in as a list of `data.frame`
+objects.  These require further scraping to identify each block that
+displays counts of sorted cells according to their presumed cell types
+and to determine to which time point each block pertains.
+
+Times are rendered as for the `pWAS000*.RData`. Aftering upcasing
+times, `30 DAY` becomes `1 MONTHS`. `6 WEEK` becomes `1.5 MONTHS`
+
+Patient names are rendered as for the `pWAS000*.RData`.
+
+The matrices that are scraped from the file consist of the first four
+columns of counts and are labelled with cell types `T CELLS`,
+`NEUTROPHILS`, `B CELLS` and `NK CELLS` as are the rows.
+
+
+# Pre-sort Counts
+
+The pre-sort counts file, `Contamination grid CBC.xlsx`, is read as a
+single `data.frame`.
+
+Further scraping is required to isolate components associated with
+different samples and patients.
+
+Again, the sampling times are rendered as described above.
+
+The cell types are assigned labels `T CELLS`, `NEUTROPHILS`, `B CELLS`
+and `NK CELLS`.
+
+
+# Combining Data Sources
+
+A collection of tables derived from the above is used to determine
+those samples having data for all four cell types for every data
+source.  These samples for which this is true are:
+
+```{r  echo=FALSE, comment="" }
+print(
+  pt.tm.complete[,1:2][
+    with(pt.tm.complete,
+	 order(Patient,sub(".* ","",
+			   as.character(timePoint)))),],
+  row.names=FALSE) 
+```
+
+
+# Calculation of the Depletion Matrix
+
+The depletion matrix is based on three components:
+
+-   **\(\Upsilon\):** the vector of cell type specific constants for
+    pre-sort cell depletion. Any reduction due to sample processing in
+    the frequency of cells of a particular type before cell sorting is
+    reflected in this vector. For the purpose of this study, these
+    values are assumed to be 1.0.  This is because no data were
+    obtained to track the cell type specific depletion of the sample/
+
+-   **\(\Omega\):** the matrix of cell sorting probabilities. The
+    canonical element of this matrix give the probability that a cell of
+    a specific type ends up in a sorter tube intended for that or
+    another cell type.  These values are ascertained from the post-sort
+    retabulations of cell types and the pre-sort frequencies.
+
+-   **\(\Psi\):** the vector of cell type specific constants
+    for post-sort cell depletion. Any reduction due to sample
+    processing in the frequency of cells from a particular sorter tube
+    after cell sorting and before and during sequencing to deterimine
+    ISs is reflected in this vector.
+
+With these values in hand, the depletion matrix is given by
+
+\[\Phi = \mathrm{Diag}(\Upsilon)\Omega\mathrm{Diag}(\Psi)
+\]
+
+where \(\mathrm{Diag}(x)\) produces the diagonal matrix with \(x\) as its diagonal. 
+
+
+## Calculation of  post sort depletion constants, \(\Psi\)
+
+The post-sort depletion constants are proporitonal to the ratios of
+\(z\), the sample cell counts, divided by \(w\), the amounts of DNA
+submitted for processing to determine ISs. The absolute values of the
+constants cannot be determined, but for present purposes the relative
+values suffice. The values are normalized so that their maximum is 1.0, viz.
+
+\[\Psi_j = \frac{w_j/z_j}{\max_i w_i/z_i}
+\]
+
+\(z\) has elements \(z_i = \#(\mbox{cells in tube}~ i)\) and
+\(\#(\cdot)\) denotes the count of elements to satisfy the condition
+given as the argument.
+
+As an example, here are the cell counts, corrected DNA weights, and
+computed weights, \(\Psi\):
+
+```{r   }
+
+example.wts <-
+  dna.wts[[1]]$corrected.nginput/pre.counts[[1]]
+example.wts <- example.wts/max(example.wts)
+
+print(
+  rbind("Pre-sort"=pre.counts[[1]],
+	ngInput=dna.wts[[1]]$corrected.nginput,
+	weights=example.wts),digits=3)
+ 
+```
+
+An alternative to this method uses estimates of the vector copy number
+(texttt{VCN}) for each cell type, counts of cells sampled and the
+counts of IS copies for the sample. Again, this is normalized so the
+;largest value is 1.0:
+
+\[\Psi_j = \frac{N_j/(\texttt{VCN}_j z_j)}{max_i \left(N_i/(\texttt{VCN}_i z_i)\right)}
+\]
+
+\(N\) has elements \(N_i = \#(\mbox{IS bearing fragments in tube}~ i)\)
+
+As an example, here are the fragment counts (\(N\)), pre-sort cell counts, vector copy numbers, and
+computed weights, \(\Psi\) for the same sample just shown:
+
+```{r  echo=FALSE, comment="" }
+
+example.frags <- with(wttabs[[1]],colSums(tab*n))
+
+example.wts <-
+  example.frags/pre.counts[[1]]/dna.wts[[1]]$VCN
+example.wts <- example.wts/max(example.wts)
+
+print(
+  rbind("Pre-sort"=pre.counts[[1]],
+	N = example.frags,
+	VCN=dna.wts[[1]]$VCN,
+	weights=example.wts),digits=3) 
+```
+
+As is evident, the values of \(\Psi\) are in rough agreement.  We will
+consider the impact using one of these two estimates versus the other
+in a later document.
+
+
+## Calculation of Sorting Probabilities
+
+The sorting probabilities, \(\Omega\) are computed from a table of
+counts, \(X\), and a vector of sample cell counts, \(z\).
+
+\(X\) has elements like
+
+\[X_{ij} = \#(\mbox{cells in tube}~ i ~\mbox{counted as type}~ j) 
+\]
+
+\[\Omega = \mathrm{Diag}(X'z)^{-1}X'\mathrm{Diag}(z)
+\]
+
+As an example, here the cell type recounts for the sample used
+previously:
+
+```{r  echo=FALSE, comment="" }
+example.mat <- cross.counts[[1]]
+dimnames(example.mat) <- list(tube=wt.ct.names,recount=wt.ct.names)
+example.mat 
+```
+
+Applying the pre-sort counts, \(\Omega\) is
+
+```{r  echo=FALSE, comment="" }
+example.mat <- mcs[[1]]
+dimnames(example.mat) <-list("CellType"=wt.ct.names,tube=wt.ct.names)
+print(example.mat,digits=3) 
+```
+
+Using the first value of \(\Psi\) from above, we have as the depletion matrix, \(\Phi\):
+
+```{r  echo=FALSE, comment="" }
+example.mat <- mcs[[1]]%*%diag(psi[[1]])
+dimnames(example.mat) <-
+list("Sample"=wt.ct.names,Sequencer=wt.ct.names)
+print(example.mat,digits=3) 
+```
+
